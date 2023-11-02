@@ -1,4 +1,16 @@
 # Home Assistant Tether Agent addon
 
+## Repo Structure
+### hass-addon
+This folder contains the addon that should be copied to the Home Assistant addons folder. When installing on a client, this is all you need to do to make the addon available to HA.
 
-[![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FRuneii%2Fhome-assistant-tether-agent)
+### image-src
+This folder contains the source files for the Rust Home Assistant Tether Agent core utility (inside hass-tether-agent), and the necessary config files for dockerizing.
+
+
+## How to update the addon
+1. The Rust source files are found in hass-tether-agent. Make whatever changes are required in here and test using `cargo run`.
+2. To update the distributed image file with the latest changes, in the `image-src` folder run the following:
+* `docker build -t randomstudiotools/hass-tether-agent .`
+* `docker image push randomstudiotools/hass-tether-agent`
+3. Note: currently the addon changes need to be distributed manually. Therefore, in Home Assistant uninstall the current Tether Agent addon, and reinstall.
