@@ -1,11 +1,12 @@
 name: "Tether Agent"
 description: "A tether agent. For Home Assistant."
-version: "1.0.3"
-slug: "tether"
+version: "1.0.4"
+slug: "tether-agent"
 init: false
-hassio_role: "manager"
+hassio_role: "homeassistant"
 hassio_api: true
 homeassistant_api: true
+ingress: true
 arch:
   - aarch64
 

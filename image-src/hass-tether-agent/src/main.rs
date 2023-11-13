@@ -4,13 +4,9 @@ use hass_rs::{client, WSEvent};
 use lazy_static::lazy_static;
 use serde::Serialize;
 use serde_json::Value;
-use std::{
-    collections::HashMap,
-    env::var,
-    sync::mpsc::{self, Receiver},
-    thread::{self},
-};
+use std::{collections::HashMap, env::var};
 use tether_agent::{PlugOptionsBuilder, TetherAgentOptionsBuilder};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use url::Url;
 
 lazy_static! {
@@ -34,74 +30,90 @@ struct EventStruct {
     state: Value,
 }
 
-fn setup_tether_agent(receiver: Receiver<EventStruct>) {
-    println!("Setting Tether up");
+fn addon_log(thread: &str, message: &str) {
+    println!("hass-tether-agent:: {}: {}", thread, message);
+}
 
-    println!("Tether conneted");
-
+async fn setup_tether_agent(mut receiver: UnboundedReceiver<EventStruct>) {
     let mut plugs = HashMap::new();
 
-    let agent_options = TetherAgentOptionsBuilder::new("homeassistant")
-        .host(&HOST)
-        .port(*PORT)
-        .username(&USERNAME)
-        .password(&PASSWORD);
+    addon_log("Tether", "Creating Tether options");
 
+    let agent_options = TetherAgentOptionsBuilder::new("homeassistant")
+        .host(Some(&HOST))
+        .port(Some(*PORT))
+        .username(Some(&USERNAME))
+        .password(Some(&PASSWORD));
+
+    addon_log("Tether", "Connecting to Tether");
     let agent = agent_options
         .clone()
         .build()
         .expect("failed to connect Tether");
 
+    addon_log("Tether", "Connected to Tether");
+
     loop {
-        if !agent.is_connected() {
-            match agent.connect(&agent_options) {
-                Ok(_) => println!("Tether reconnected"),
-                Err(e) => println!("Error reconnecting to Tether: {}", e),
+        match receiver.recv().await {
+            Some(data) => {
+                if !agent.is_connected() {
+                    match agent.connect() {
+                        Ok(_) => addon_log("Tether", "Tether reconnected"),
+                        Err(e) => {
+                            addon_log(
+                                "Tether",
+                                format!("Error reconnecting to Tether: {}", e).as_str(),
+                            );
+                            return;
+                        }
+                    }
+                }
+
+                let name = format!("{}/{}", data.entity_id.clone(), data.attribute);
+                let topic = format!("{}/{}", "homeassistant", name);
+                if !plugs.contains_key(&name) {
+                    plugs.insert(
+                        name.clone(),
+                        PlugOptionsBuilder::create_output(&data.attribute)
+                            .topic(Some(&topic))
+                            .build(&agent)
+                            .expect("Failed to create Tether plug"),
+                    );
+                }
+
+                let plug = plugs.get(&name).unwrap();
+
+                match agent.encode_and_publish(&plug, data.state) {
+                    Ok(_) => continue,
+                    Err(e) => {
+                        addon_log("Tether", format!("Error publishing: {}", e).as_str());
+                        return;
+                    }
+                }
             }
-        }
-
-        let received = receiver.recv();
-        if received.is_err() {
-            println!("Error receiving message {}", received.err().unwrap());
-            return;
-        }
-
-        let data = received.unwrap();
-
-        let name = format!("{}/{}", data.entity_id.clone(), data.attribute);
-        let topic = format!("{}/{}", "homeassistant", name);
-        if !plugs.contains_key(&name) {
-            plugs.insert(
-                name.clone(),
-                PlugOptionsBuilder::create_output(&data.attribute)
-                    .topic(&topic)
-                    .build(&agent)
-                    .expect("failed to create output"),
-            );
-        }
-
-        let plug = plugs.get(&name).unwrap();
-
-        match agent.encode_and_publish(&plug, data.state) {
-            Ok(_) => continue,
-            Err(e) => println!("Error publishing: {}", e),
+            None => {
+                continue;
+            }
         }
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    addon_log("Main", "Starting addon");
     env_logger::init();
-    println!("Launching services");
 
-    let (sender, receiver) = mpsc::channel();
+    addon_log("Main", "Launching services");
+    let (sender, receiver) = unbounded_channel();
+    addon_log("Main", "Connecting to Tether broker");
+    tokio::spawn(async move { setup_tether_agent(receiver).await });
 
-    thread::spawn(move || setup_tether_agent(receiver));
+    addon_log("Main", "Connecting to Home Assistant websocket client");
 
-    println!("Creating the Websocket Client and Authenticate the session");
     let url = Url::parse("ws://supervisor/core/websocket").unwrap();
     let mut client = client::connect_to_url(url).await?;
     client.auth_with_longlivedtoken(&*TOKEN).await?;
+    addon_log("Main", "Connected to Home Assistant websocket client");
 
     let closure = move |item: WSEvent| {
         let old_state = match item.event.data.old_state {
@@ -117,7 +129,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match serde_json::from_str(&old_state.attributes.to_string()) {
                 Ok(state) => state,
                 Err(e) => {
-                    println!("Error parsing json: {}", e);
+                    addon_log(
+                        "HASS websocket connection",
+                        format!("Error parsing old state json: {}", e).as_str(),
+                    );
                     return;
                 }
             };
@@ -125,7 +140,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match serde_json::from_str(&new_state.attributes.to_string()) {
                 Ok(state) => state,
                 Err(e) => {
-                    println!("Error parsing json: {}", e);
+                    addon_log(
+                        "HASS websocket connection",
+                        format!("Error parsing new state json: {}", e).as_str(),
+                    );
                     return;
                 }
             };
@@ -139,14 +157,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 state: value.clone(),
             };
 
-            sender.send(custom_message).unwrap();
+            sender.send(custom_message).unwrap_or_else(|error| {
+                addon_log(
+                    "HASS websocket connection",
+                    format!("Error sending diff message to Tether: {}", error).as_str(),
+                )
+            });
         }
     };
 
     match client.subscribe_event("state_changed", closure).await {
-        Ok(v) => println!("Event subscribed: {}", v),
-        Err(err) => println!("Oh no, an error: {}", err),
+        Ok(v) => addon_log(
+            "HASS websocket connection",
+            format!("Subscribed to state change events: {}", v).as_str(),
+        ),
+        Err(err) => addon_log(
+            "HASS websocket connection",
+            format!("Oh no, an error: {}", err).as_str(),
+        ),
     }
-
     loop {}
 }

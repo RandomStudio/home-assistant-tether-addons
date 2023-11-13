@@ -13,4 +13,4 @@ This folder contains the source files for the Rust Home Assistant Tether Agent c
 2. To update the distributed image file with the latest changes, in the `image-src` folder run the following:
 * `docker build -t randomstudiotools/hass-tether-agent .`
 * `docker image push randomstudiotools/hass-tether-agent`
-3. Note: currently the addon changes need to be distributed manually. Therefore, in Home Assistant uninstall the current Tether Agent addon, and reinstall.
+3. Go to the addon page in Home Assistant, press `Rebuild`. The latest image will be pulled, mounted, and started.
