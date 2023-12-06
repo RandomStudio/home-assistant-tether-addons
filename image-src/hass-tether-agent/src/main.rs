@@ -27,7 +27,7 @@ struct EventStruct {
     entity_id: String,
     event_type: String,
     attribute: String,
-    state: Value,
+    state: String,
 }
 
 fn addon_log(thread: &str, message: &str) {
@@ -81,7 +81,7 @@ async fn setup_tether_agent(mut receiver: UnboundedReceiver<EventStruct>) {
                     );
                 }
 
-                let plug = plugs.get(&name).unwrap();
+                let plug: &tether_agent::PlugDefinition = plugs.get(&name).unwrap();
 
                 match agent.encode_and_publish(&plug, data.state) {
                     Ok(_) => continue,
@@ -116,17 +116,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     addon_log("Main", "Connected to Home Assistant websocket client");
 
     let closure = move |item: WSEvent| {
-        let old_state = match item.event.data.old_state {
+        let old_state_obj = match item.event.data.old_state {
             Some(entity) => entity,
             None => return,
         };
-        let new_state = match item.event.data.new_state {
+        let new_state_obj = match item.event.data.new_state {
             Some(entity) => entity,
             None => return,
         };
 
+        // First send state changes
+        let has_changed_state = old_state_obj.state != new_state_obj.state;
+
+        if has_changed_state {
+            let custom_message = EventStruct {
+                entity_id: item.event.data.entity_id.clone(),
+                event_type: item.event.event_type.clone(),
+                attribute: "state".to_string(),
+                state: new_state_obj.state.clone(),
+            };
+
+            sender.send(custom_message).unwrap_or_else(|error| {
+                addon_log(
+                    "HASS websocket connection",
+                    format!("Error sending state message to Tether: {}", error).as_str(),
+                )
+            });
+        }
+        // Then send any attribute changes
         let old_state: HashMap<String, Value> =
-            match serde_json::from_str(&old_state.attributes.to_string()) {
+            match serde_json::from_str(&old_state_obj.attributes.to_string()) {
                 Ok(state) => state,
                 Err(e) => {
                     addon_log(
@@ -137,7 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
         let new_state: HashMap<String, Value> =
-            match serde_json::from_str(&new_state.attributes.to_string()) {
+            match serde_json::from_str(&new_state_obj.attributes.to_string()) {
                 Ok(state) => state,
                 Err(e) => {
                     addon_log(
@@ -147,6 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
             };
+
         let received_diff = hash_map_diff(&old_state, &new_state);
 
         for (key, value) in received_diff.updated.into_iter() {
@@ -154,7 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 entity_id: item.event.data.entity_id.clone(),
                 event_type: item.event.event_type.clone(),
                 attribute: key.clone(),
-                state: value.clone(),
+                state: value.clone().to_string(),
             };
 
             sender.send(custom_message).unwrap_or_else(|error| {
