@@ -27,7 +27,7 @@ struct EventStruct {
     entity_id: String,
     event_type: String,
     attribute: String,
-    state: String,
+    state: Value,
 }
 
 fn addon_log(thread: &str, message: &str) {
@@ -133,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 entity_id: item.event.data.entity_id.clone(),
                 event_type: item.event.event_type.clone(),
                 attribute: "state".to_string(),
-                state: new_state_obj.state.clone(),
+                state: Value::from(new_state_obj.state.clone()),
             };
 
             sender.send(custom_message).unwrap_or_else(|error| {
@@ -174,7 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 entity_id: item.event.data.entity_id.clone(),
                 event_type: item.event.event_type.clone(),
                 attribute: key.clone(),
-                state: value.clone().to_string(),
+                state: value.clone(),
             };
 
             sender.send(custom_message).unwrap_or_else(|error| {
