@@ -4,7 +4,7 @@ use hass_rs::{client, WSEvent};
 use lazy_static::lazy_static;
 use serde::Serialize;
 use serde_json::Value;
-use std::{collections::HashMap, env::var};
+use std::{collections::HashMap, env::var, thread::sleep};
 use tether_agent::{PlugOptionsBuilder, TetherAgentOptionsBuilder};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use url::Url;
@@ -198,5 +198,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             format!("Oh no, an error: {}", err).as_str(),
         ),
     }
-    loop {}
+    loop {
+        sleep(std::time::Duration::from_millis(15));
+    }
 }
