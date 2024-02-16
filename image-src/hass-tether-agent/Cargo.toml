@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 env_logger = "0.10.0"
-hass-rs = { git = "https://github.com/danrusei/hass-rs.git" }
+hass-rs = { git = "https://github.com/danrusei/hass-rs.git", rev = "a51d02c3202568076b6bc093466ad0277a812946" }
 lazy_static = "1.4.0"
 url = "2.4.0"
 tether-agent = "0.12.1"

@@ -76,6 +76,8 @@ async fn setup_tether_agent(mut receiver: UnboundedReceiver<EventStruct>) {
                         name.clone(),
                         PlugOptionsBuilder::create_output(&data.attribute)
                             .topic(Some(&topic))
+                            .retain(Some(true))
+                            .qos(Some(0))
                             .build(&agent)
                             .expect("Failed to create Tether plug"),
                     );
