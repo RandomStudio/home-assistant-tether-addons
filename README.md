@@ -1,8 +1,11 @@
-# Home Assistant Tether Agent addon
+# Home Assistant Tether addons
 
 ## Repo Structure
 ### hass-addon
-This folder contains the addon that should be copied to the Home Assistant addons folder. When installing on a client, this is all you need to do to make the addon available to HA.
+This folder contains the addon to pipe Home Assistant events to a Tether broker. It should be copied to the Home Assistant addons folder. When installing on a client, this is all you need to do to make the addon available to HA. It can be used with or without the broker addon.
+
+### hass-broker-addon
+This folder contains the addon to run a Broker from within Home Assistant. It should be copied to the Home Assistant addons folder. When installing on a client, this is all you need to do to make the addon available to HA. It can be used with or without the agent addon.
 
 ### image-src
 This folder contains the source files for the Rust Home Assistant Tether Agent core utility (inside hass-tether-agent), and the necessary config files for dockerizing.
